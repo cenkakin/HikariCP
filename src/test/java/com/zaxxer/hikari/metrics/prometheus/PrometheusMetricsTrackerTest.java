@@ -99,4 +99,82 @@ public class PrometheusMetricsTrackerTest {
              labelValues), is(nullValue()));
       }
    }
+
+   @Test
+   public void testMultiplePoolInSameRegistry() throws Exception {
+      CollectorRegistry customRegistry = new CollectorRegistry();
+
+      HikariConfig config = newHikariConfig();
+      config.setMetricsTrackerFactory(new PrometheusMetricsTrackerFactory(customRegistry));
+      config.setPoolName("first");
+      config.setJdbcUrl("jdbc:h2:mem:");
+      config.setMaximumPoolSize(2);
+      config.setConnectionTimeout(250);
+
+      HikariConfig config2 = newHikariConfig();
+      config2.setMetricsTrackerFactory(new PrometheusMetricsTrackerFactory(customRegistry));
+      config2.setPoolName("second");
+      config2.setJdbcUrl("jdbc:h2:mem:");
+      config2.setMaximumPoolSize(4);
+      config2.setConnectionTimeout(250);
+
+      String[] labelNames = {"pool"};
+      String[] labelValues1 = {config.getPoolName()};
+
+      try (HikariDataSource ignored = new HikariDataSource(config)) {
+         assertThat(customRegistry.getSampleValue(
+            "hikaricp_connection_timeout_count",
+            labelNames,
+            labelValues1), is(0.0));
+      }
+
+      String[] labelValues2 = {config2.getPoolName()};
+      try (HikariDataSource ignored = new HikariDataSource(config2)) {
+         assertThat(customRegistry.getSampleValue(
+            "hikaricp_connection_timeout_count",
+            labelNames,
+            labelValues2), is(0.0));
+      }
+   }
+
+   @Test
+   public void testMultiplePoolInDifferentRegistry() throws Exception {
+      CollectorRegistry customRegistry = new CollectorRegistry();
+
+      HikariConfig config = newHikariConfig();
+      config.setMetricsTrackerFactory(new PrometheusMetricsTrackerFactory(customRegistry));
+      config.setPoolName("first");
+      config.setJdbcUrl("jdbc:h2:mem:");
+      config.setMaximumPoolSize(2);
+      config.setConnectionTimeout(250);
+
+      HikariConfig config2 = newHikariConfig();
+      config2.setMetricsTrackerFactory(new PrometheusMetricsTrackerFactory());
+      config2.setPoolName("second");
+      config2.setJdbcUrl("jdbc:h2:mem:");
+      config2.setMaximumPoolSize(4);
+      config2.setConnectionTimeout(250);
+
+      String[] labelNames = {"pool"};
+      String[] labelValues1 = {config.getPoolName()};
+
+      try (HikariDataSource ignored = new HikariDataSource(config)) {
+         assertThat(customRegistry.getSampleValue(
+            "hikaricp_connection_timeout_count",
+            labelNames,
+            labelValues1), is(0.0));
+      }
+
+      String[] labelValues2 = {config2.getPoolName()};
+      try (HikariDataSource ignored = new HikariDataSource(config2)) {
+         assertThat(customRegistry.getSampleValue(
+            "hikaricp_connection_timeout_count",
+            labelNames,
+            labelValues2), is(nullValue()));
+         assertThat(CollectorRegistry.defaultRegistry.getSampleValue(
+            "hikaricp_connection_timeout_count",
+            labelNames,
+            labelValues2), is(0.0));
+      }
+   }
 }

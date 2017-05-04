@@ -17,93 +17,114 @@
 package com.zaxxer.hikari.metrics.prometheus;
 
 import com.zaxxer.hikari.metrics.IMetricsTracker;
-
 import io.prometheus.client.Collector;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
 import io.prometheus.client.Summary;
+import java.util.HashMap;
+import java.util.Map;
 
-class PrometheusMetricsTracker implements IMetricsTracker
-{
-   private final Counter.Child connectionTimeoutCounter;
-   private final Summary.Child elapsedAcquiredSummary;
-   private final Summary.Child elapsedBorrowedSummary;
-   private final Summary.Child elapsedCreationSummary;
+class PrometheusMetricsTracker implements IMetricsTracker {
 
-   private final Counter ctCounter;
-   private final Summary eaSummary;
-   private final Summary ebSummary;
-   private final Summary ecSummary;
+   private static final Map<CollectorRegistry, PrometheusMetricCollectors> COLLECTORS_MAP = new HashMap<>();
+
+   private final Counter.Child connectionTimeoutCounterChild;
+   private final Summary.Child elapsedAcquiredSummaryChild;
+   private final Summary.Child elapsedBorrowedSummaryChild;
+   private final Summary.Child elapsedCreationSummaryChild;
 
    private final Collector collector;
    private final CollectorRegistry registry;
 
-   PrometheusMetricsTracker(String poolName, Collector collector, CollectorRegistry registry)
-   {
+   PrometheusMetricsTracker(String poolName, Collector collector, CollectorRegistry registry) {
       this.collector = collector;
       this.registry = registry;
+      PrometheusMetricCollectors metricCollectors = getPrometheusMetricCollectors(registry);
 
-      ctCounter = Counter.build()
-         .name("hikaricp_connection_timeout_count")
-         .labelNames("pool")
-         .help("Connection timeout count")
-         .register(registry);
-
-      this.connectionTimeoutCounter = ctCounter.labels(poolName);
-
-      eaSummary = Summary.build()
-         .name("hikaricp_connection_acquired_nanos")
-         .labelNames("pool")
-         .help("Connection acquired time (ns)")
-         .register(registry);
-      this.elapsedAcquiredSummary = eaSummary.labels(poolName);
-
-      ebSummary = Summary.build()
-         .name("hikaricp_connection_usage_millis")
-         .labelNames("pool")
-         .help("Connection usage (ms)")
-         .register(registry);
-      this.elapsedBorrowedSummary = ebSummary.labels(poolName);
-
-      ecSummary = Summary.build()
-            .name("hikaricp_connection_creation_millis")
-            .labelNames("pool")
-            .help("Connection creation (ms)")
-            .register(registry);
-      this.elapsedCreationSummary = ecSummary.labels(poolName);
+      this.connectionTimeoutCounterChild = metricCollectors.getConnectionTimeoutCounter()
+         .labels(poolName);
+      this.elapsedAcquiredSummaryChild = metricCollectors.getElapsedAcquiredSummary()
+         .labels(poolName);
+      this.elapsedBorrowedSummaryChild = metricCollectors.getElapsedBorrowedSummary()
+         .labels(poolName);
+      this.elapsedCreationSummaryChild = metricCollectors.getElapsedCreationSummary()
+         .labels(poolName);
    }
 
-   @Override
-   public void close()
-   {
-      registry.unregister(ctCounter);
-      registry.unregister(eaSummary);
-      registry.unregister(ebSummary);
-      registry.unregister(ecSummary);
+   private PrometheusMetricCollectors getPrometheusMetricCollectors(CollectorRegistry registry) {
+      return COLLECTORS_MAP
+         .computeIfAbsent(registry, PrometheusMetricCollectors::new);
+   }
+
+   public void close() {
       registry.unregister(collector);
    }
 
    @Override
-   public void recordConnectionAcquiredNanos(long elapsedAcquiredNanos)
-   {
-      elapsedAcquiredSummary.observe(elapsedAcquiredNanos);
+   public void recordConnectionAcquiredNanos(long elapsedAcquiredNanos) {
+      elapsedAcquiredSummaryChild.observe(elapsedAcquiredNanos);
    }
 
    @Override
-   public void recordConnectionUsageMillis(long elapsedBorrowedMillis)
-   {
-      elapsedBorrowedSummary.observe(elapsedBorrowedMillis);
+   public void recordConnectionUsageMillis(long elapsedBorrowedMillis) {
+      elapsedBorrowedSummaryChild.observe(elapsedBorrowedMillis);
    }
 
    @Override
-   public void recordConnectionCreatedMillis(long connectionCreatedMillis)
-   {
-      elapsedCreationSummary.observe(connectionCreatedMillis);
+   public void recordConnectionCreatedMillis(long connectionCreatedMillis) {
+      elapsedCreationSummaryChild.observe(connectionCreatedMillis);
    }
 
    @Override
-   public void recordConnectionTimeout()
-   {
-      connectionTimeoutCounter.inc();
+   public void recordConnectionTimeout() {
+      connectionTimeoutCounterChild.inc();
+   }
+
+   private final static class PrometheusMetricCollectors {
+
+      private final Counter connectionTimeoutCounter;
+      private final Summary elapsedAcquiredSummary;
+      private final Summary elapsedBorrowedSummary;
+      private final Summary elapsedCreationSummary;
+
+      PrometheusMetricCollectors(CollectorRegistry collectorRegistry) {
+         connectionTimeoutCounter = Counter.build()
+            .name("hikaricp_connection_timeout_count")
+            .labelNames("pool")
+            .help("Connection timeout count")
+            .register(collectorRegistry);
+         elapsedAcquiredSummary = Summary.build()
+            .name("hikaricp_connection_acquired_nanos")
+            .labelNames("pool")
+            .help("Connection acquired time (ns)")
+            .register(collectorRegistry);
+         elapsedBorrowedSummary = Summary.build()
+            .name("hikaricp_connection_usage_millis")
+            .labelNames("pool")
+            .help("Connection usage (ms)")
+            .register(collectorRegistry);
+
+         elapsedCreationSummary = Summary.build()
+            .name("hikaricp_connection_creation_millis")
+            .labelNames("pool")
+            .help("Connection creation (ms)")
+            .register(collectorRegistry);
+      }
+
+      Counter getConnectionTimeoutCounter() {
+         return connectionTimeoutCounter;
+      }
+
+      Summary getElapsedAcquiredSummary() {
+         return elapsedAcquiredSummary;
+      }
+
+      Summary getElapsedBorrowedSummary() {
+         return elapsedBorrowedSummary;
+      }
+
+      Summary getElapsedCreationSummary() {
+         return elapsedCreationSummary;
+      }
    }
 }
